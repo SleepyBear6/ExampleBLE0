@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="Gradle: C./Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/libs/mitacbandsdk.jar">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/app/libs/mitacbandsdk.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

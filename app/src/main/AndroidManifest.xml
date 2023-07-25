@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--suppress ALL -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:dist="http://schemas.android.com/apk/distribution"
+    package="com.exampleble"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <dist:module dist:instant="true" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-sdk android:minSdkVersion="19" android:targetSdkVersion="31" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:requestLegacyExternalStorage="true"
+        android:theme="@style/AppTheme.NoActionBar"
+        android:hardwareAccelerated="true"
+        android:largeHeap="true">
+
+        <activity
+            android:exported="false"
+            android:name="com.ibsalab.general.activity.LoginActivityPersonal"
+            android:label="登入"
+            android:screenOrientation="portrait" />
+
+        <activity
+            android:exported="false"
+            android:name="com.exampleble.activity.PersonalData"
+            android:label="個人資訊"
+            android:screenOrientation="portrait" />
+
+
+        <activity android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <intent-filter>
+                <data android:mimeType="text/z2b" />
+            </intent-filter>
+        </activity>
+
+
+<provider
+    android:name="androidx.core.content.FileProvider"
+    android:authorities="${applicationId}.observers.fileprovider"
+
+    android:grantUriPermissions="true"
+    android:exported="false">
+    <meta-data
+        android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/provider_paths"></meta-data>
+</provider>
+    </application>
+
+</manifest>

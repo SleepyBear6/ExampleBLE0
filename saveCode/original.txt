@@ -1,0 +1,829 @@
+package com.exampleble.fragment
+
+import android.annotation.SuppressLint
+import android.graphics.Color
+import android.os.Build
+import android.os.Bundle
+import android.os.Environment
+import android.os.Handler
+import android.util.Log
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.*
+import androidx.annotation.RequiresApi
+import androidx.fragment.app.Fragment
+import com.clj.fastble.BleManager
+import com.clj.fastble.callback.BleNotifyCallback
+import com.clj.fastble.callback.BleWriteCallback
+import com.clj.fastble.data.BleDevice
+import com.clj.fastble.exception.BleException
+import com.clj.fastble.utils.HexUtil
+import com.desarollobluetooth.fragments.ARG_PARAM1
+import com.desarollobluetooth.fragments.ARG_PARAM2
+import com.exampleble.DataRecordList
+import com.exampleble.DataRecordPoint
+import com.exampleble.MainActivity
+import com.exampleble.R
+import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.data.LineDataSet
+import com.yjlab.drawingpack.createLineChart
+import com.yjlab.drawingpack.resetLineChart
+import io.realm.Realm
+import io.realm.RealmConfiguration
+import io.realm.RealmList
+import kotlinx.android.synthetic.main.fragment_show_chart.*
+import kotlinx.coroutines.*
+import java.io.File
+import java.io.FileOutputStream
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.*
+import java.util.concurrent.ConcurrentLinkedQueue
+import kotlin.collections.ArrayList
+import kotlin.concurrent.fixedRateTimer
+import kotlin.math.pow
+import com.yjlab.drawingpack.updateLineChartValue
+import java.util.stream.Collectors
+
+
+class ShowChartFragment:Fragment() {
+    /**************BLE Parameter*************/
+    private val bleUARTServiceUUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
+    private val bleUARTCharacteristicUUID = "6e40E00C-b5a3-f393-e0a9-e50e24dcca9e"
+    private val bleControlCharacteristicUUID = "6e40E00A-b5a3-f393-e0a9-e50e24dcca9e"
+
+    private val cmdClearFlash = "03"
+    private val cmdReadRemaining = "04"
+    private val cmdRealTimeOpen = "11"
+    private val cmdRealTimeClose = "12"
+    private val cmdRealTimeECG1Send = 0x13
+    private val cmdRealTimeECG2Send = 0x14
+    private val cmdRealTimeGsensor1Send = 0x15
+    private val cmdRealTimeGsensor2Send = 0x16
+    private val cmdFileSend = "17"
+    private val cmdFileReturnValue = 0x18
+
+    private var flagGetFile = false
+    private var flagClearingFlash = false
+
+    private val MTU_SIZE = 120
+
+    @ExperimentalUnsignedTypes
+    private var dataReturnValue = UByteArray(2)
+    /**************Temporary Data Storage Parameter*************/
+    private val queueECG1 = ConcurrentLinkedQueue<Float>()
+    private val queueECG2 = ConcurrentLinkedQueue<Float>()
+    private val queueG1 = ConcurrentLinkedQueue<Float>()
+    private val queueG2 = ConcurrentLinkedQueue<Float>()
+
+    private val arrayListECG1 = ArrayList<Float>()
+    private val arrayListECG2 = ArrayList<Float>()
+    private val arrayListG1 = ArrayList<Float>()
+    private val arrayListG2 = ArrayList<Float>()
+    /**************Data Plotting Parameter*************/
+    private val entriesECG1 = arrayListOf<Entry>(Entry(0f, 0f))
+    private var dataSetECG1 = LineDataSet(entriesECG1, "ECG1 value")
+    private val entriesECG2 = arrayListOf<Entry>(Entry(0f, 0f))
+    private var dataSetECG2 = LineDataSet(entriesECG2, "ECG2 value")
+    private val entriesG1 = arrayListOf<Entry>(Entry(0f, 0f))
+    private var dataSetG1 = LineDataSet(entriesG1, "G1 value")
+    private val entriesG2 = arrayListOf<Entry>(Entry(0f, 0f))
+    private var dataSetG2 = LineDataSet(entriesG2, "G2 value")
+
+    private var removalCounterEMG = 0
+    private var removalCounterG = 0
+    private val VISIBLE_COUNT = 1000f
+
+    private var count = 0
+
+    private var flagPlotting = false
+
+    private var bufferSignalEMG1 =0f
+    private var bufferSignalEMG2 =0f
+    /**************File Storage Parameter*************/
+
+    private var fileChosen = ""
+
+    private val realmName = "testRealm.realm"
+    private val config = RealmConfiguration.Builder().name(realmName)
+        .allowQueriesOnUiThread(true)
+        .allowWritesOnUiThread(true)
+        .build()
+    val backgroundThreadRealm : Realm = Realm.getInstance(config)
+
+
+
+    override fun onCreateView(
+        inflater: LayoutInflater, container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View? {
+        // Inflate the layout for this fragment
+        return inflater.inflate(R.layout.fragment_show_chart, container, false)
+    }
+
+    @SuppressLint("SetTextI18n")
+    @ExperimentalUnsignedTypes
+    @RequiresApi(Build.VERSION_CODES.O)
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+
+        val btnGetData = view.findViewById<Button>(R.id.btnGetData)
+        val btnStartRecord = view.findViewById<Button>(R.id.btnStartRecord)
+        val lineChartEMG = view.findViewById<LineChart>(R.id.chartEMG)
+        val lineChartG = view.findViewById<LineChart>(R.id.chartG)
+        val textIntro = view.findViewById<TextView>(R.id.textIntro)
+        var timerPlotting = Timer()
+        var timerCountSecond = Timer()
+        var flagBtnStartRecord = false
+        val bleDevice = (activity as MainActivity).getBleDevice()
+
+        var countRecordTime = 0
+        lateinit var jobRecord:Job
+
+        if (bleDevice != null) {
+            synchronizeState()
+            connectionDetection(view, bleDevice)
+        }
+
+        Handler().postDelayed({
+            BleManager.getInstance().notify(
+                bleDevice,
+                bleUARTServiceUUID,
+                bleUARTCharacteristicUUID,//characteristic.uuid.toString(),
+                object : BleNotifyCallback() {
+                    override fun onNotifySuccess() {}
+
+                    override fun onNotifyFailure(exception: BleException) {
+
+                        runOnUiThread {
+                            textIntro.text = "Notify $exception"
+                        }
+                    }
+
+                    override fun onCharacteristicChanged(data: ByteArray) {
+                        if (flagPlotting) {
+                            if (data.size == MTU_SIZE && flagGetFile) {
+                                val uData = data.toUByteArray()
+
+                                backgroundThreadRealm.beginTransaction()
+                                val lastList =
+                                    backgroundThreadRealm.where(DataRecordList::class.java).findAll().last()?.recordData
+                                for (ii in 0 until MTU_SIZE step 10) {
+                                    val tmpObj = DataRecordPoint()
+                                    tmpObj.ECG1 = checkUnsignedPoint(uData[ii] * 256u + uData[ii+1]).toFloat()
+                                    tmpObj.ECG2 = checkUnsignedPoint(uData[ii+2] * 256u + uData[ii+3]).toFloat()
+
+                                    if ((ii/10)%2 == 0) {
+                                        tmpObj.gSense1_X = checkUnsignedPoint(uData[ii + 4] * 256u + uData[ii + 5]).toFloat()
+                                        tmpObj.gSense1_Y = checkUnsignedPoint(uData[ii + 6] * 256u + uData[ii + 7]).toFloat()
+                                        tmpObj.gSense1_Z = checkUnsignedPoint(uData[ii + 8] * 256u + uData[ii + 9]).toFloat()
+                                    } else {
+                                        tmpObj.gSense2_X = checkUnsignedPoint(uData[ii + 4] * 256u + uData[ii + 5]).toFloat()
+                                        tmpObj.gSense2_Y = checkUnsignedPoint(uData[ii + 6] * 256u + uData[ii + 7]).toFloat()
+                                        tmpObj.gSense2_Z = checkUnsignedPoint(uData[ii + 8] * 256u + uData[ii + 9]).toFloat()
+                                    }
+
+                                    lastList?.add(tmpObj)
+                                }
+
+                                backgroundThreadRealm.commitTransaction()
+                            }
+                        }
+                    }
+                }
+            )
+        }, 200)
+
+        Handler().postDelayed({
+            BleManager.getInstance().notify(
+                bleDevice,
+                bleUARTServiceUUID,
+                bleControlCharacteristicUUID,//characteristic.uuid.toString(),
+                object : BleNotifyCallback() {
+                    override fun onNotifySuccess() {}
+
+                    override fun onNotifyFailure(exception: BleException) {
+
+                        runOnUiThread {
+                            textIntro.text = "NotifyA Failed"
+                        }
+                    }
+
+                    override fun onCharacteristicChanged(data: ByteArray) {
+                        dataReturnValue = data.toUByteArray()
+
+                    }
+                }
+            )
+        }, 1800)
+
+        backgroundThreadRealm.beginTransaction()
+        val dataList = backgroundThreadRealm
+            .where(DataRecordList::class.java).findAll()
+            .stream()
+            .map(DataRecordList::createTime).collect(Collectors.toList())
+        backgroundThreadRealm.commitTransaction()
+
+        val adapter = ArrayAdapter(this.requireActivity(), android.R.layout.simple_spinner_dropdown_item, dataList)
+        spinnerList.adapter = adapter
+
+        /*********************************
+         * Spinner Selection Listener
+         *********************************/
+        spinnerList.onItemSelectedListener = object:
+            AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>, view: View, pos: Int, id: Long) {
+                fileChosen = parent.getItemAtPosition(pos) as String
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {
+                TODO("Not yet implemented")
+            }
+        }
+
+        /*********************************
+         * Button
+         * Used for sending a command to the device to send data to the PC
+         *********************************/
+        btnGetData.setOnClickListener {
+            val dir = getExternalStoragePrivateDir()
+            lateinit var outputStream:FileOutputStream
+
+            backgroundThreadRealm.executeTransaction {
+                val fileName = "$fileChosen.csv"
+                val f = File(dir, fileName)
+                outputStream = FileOutputStream(f)
+
+                val latestData = it.where(DataRecordList::class.java).equalTo("createTime", fileChosen).findAll().last()?.recordData
+
+                for (num in 0 until latestData?.size!!) {
+                    outputStream.write((latestData[num]?.ECG1.toString() + "," + latestData[num]?.ECG2.toString() + ",").toByteArray())
+
+                    if (latestData[num]?.gSense1_X != null) {
+                        outputStream.write((latestData[num]?.gSense1_X.toString() + "," + latestData[num]?.gSense1_Y.toString() + "," + latestData[num]?.gSense1_Z.toString() + ",").toByteArray())
+                    }
+                    else {
+                        outputStream.write(",,,".toByteArray())
+                    }
+
+                    if (latestData[num]?.gSense2_X != null) {
+                        outputStream.write((latestData[num]?.gSense2_X.toString() + "," + latestData[num]?.gSense2_Y.toString() + "," + latestData[num]?.gSense2_Z.toString() + "\n").toByteArray())
+                    }
+                    else {
+                        outputStream.write(",,\n".toByteArray())
+                    }
+                }
+            }
+
+            outputStream.close()
+
+            runOnUiThread {
+                textIntro.text = "寫檔成功"
+            }
+        }
+
+        /*********************************
+         * Button
+         * Used for Starting recording on the device
+         *********************************/
+        btnStartRecord.setOnClickListener {
+            if (!flagBtnStartRecord) {
+                flagBtnStartRecord = true
+                flagPlotting = true
+                flagGetFile = true
+                removalCounterEMG = 0
+                removalCounterG = 0
+
+                val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss")
+                //val fileNameEMG = "EMG_" + LocalDateTime.now().format(formatter) + ".txt"  //.z2b
+                //val fileNameG = "G_" + LocalDateTime.now().format(formatter) + ".txt"  //.z2b
+                var posLastPoint = 0
+                var posNowPoint = 0
+
+                countRecordTime = 0
+                btnGetData.isEnabled = false
+                // btnReadRemaining.isEnabled = false
+                // btnClearFlash.isEnabled = false
+                /*
+                queueECG1.clear()
+                queueECG2.clear()
+                queueG1.clear()
+                queueG2.clear()
+                 */
+                backgroundThreadRealm.executeTransaction {
+                    val tmpObj = it.createObject(DataRecordList::class.java)
+
+                    /*
+                    val lastID = it.where(DataRecordList::class.java).findAll().last()?.id
+                    if (lastID != null) {
+                        tmpObj.id = lastID+1
+                    }
+                    else {
+                        tmpObj.id = 1
+                    }
+                    */
+
+                    tmpObj.createTime = LocalDateTime.now().format(formatter)
+                }
+
+                val hex = cmdRealTimeOpen
+                BleManager.getInstance().write(
+                    bleDevice,
+                    bleUARTServiceUUID,
+                    bleUARTCharacteristicUUID,
+                    HexUtil.hexStringToBytes(hex),
+                    object : BleWriteCallback() {
+                        override fun onWriteSuccess(
+                            current: Int,
+                            total: Int,
+                            justWrite: ByteArray
+                        ) {
+                        }
+
+                        override fun onWriteFailure(exception: BleException) {
+                            runOnUiThread {
+                                addText(textIntro, "$exception:11")
+                            }
+                        }
+                    }
+                )
+
+
+                jobRecord = GlobalScope.launch(Dispatchers.Default) {
+                    val one = async {
+                        timerCountSecond = fixedRateTimer("", true, 300, 1000) {
+                            runOnUiThread {
+                                textSecond.text = "量測時間 : $countRecordTime 秒"
+                            }
+                            countRecordTime++
+                        }
+                    }
+
+                    val two = async {
+                        resetLineChart(lineChartEMG)
+                        resetLineChart(lineChartG)
+
+                        dataSetECG1 = LineDataSet(entriesECG1, "ECG1 value")
+                        dataSetECG2 = LineDataSet(entriesECG2, "ECG2 value")
+                        createLineChart(lineChartEMG, *arrayOf(dataSetECG1, dataSetECG2))
+                        val yAxisRight = lineChartEMG.axisRight
+                        yAxisRight.isEnabled = false
+                        val yAxisLeft = lineChartEMG.axisLeft
+                        yAxisLeft.granularity = 1f
+                        yAxisLeft.axisMinimum = -300F
+                        yAxisLeft.axisMaximum = 300F
+
+
+                        dataSetG1 = LineDataSet(entriesG1, "G1 value")
+                        dataSetG2 = LineDataSet(entriesG2, "G2 value")
+                        createLineChart(lineChartG, *arrayOf(dataSetG1, dataSetG2))
+                        val yAxisRight2 = lineChartG.axisRight
+                        yAxisRight2.isEnabled = false
+                        val yAxisLeft2 = lineChartG.axisLeft
+                        yAxisLeft2.granularity = 1f
+
+                        //createChartECG(lineChart)
+                        timerPlotting = fixedRateTimer("", true, 500, 30) { //Actual interval is 12*(1/250) = 48ms, multiple by 2 for delay
+                            if (flagPlotting) {
+                                val queuePlottingECG1 = ArrayList<Float?>()
+                                val queuePlottingECG2 = ArrayList<Float?>()
+                                val queuePlottingG1 = ArrayList<Float?>()
+                                val queuePlottingG2 = ArrayList<Float?>()
+
+                                runOnUiThread {
+                                    backgroundThreadRealm.beginTransaction()
+                                    val tmpDataList: RealmList<DataRecordPoint>? = backgroundThreadRealm.where(DataRecordList::class.java).findAll().last()?.recordData
+                                    //val tmp = backgroundThreadRealm.where(DataRecordList::class.java).findAll().last()?.createTime.toString()
+                                    posNowPoint = tmpDataList?.size!!
+                                    val data = tmpDataList.subList(posLastPoint, posNowPoint)
+                                    backgroundThreadRealm.commitTransaction()
+
+                                    for (ii in 0 until data.size) {
+                                        bufferSignalEMG1 = signalFilterForEMG(data[ii].ECG1, 0)
+                                        bufferSignalEMG2 = signalFilterForEMG(data[ii].ECG2, 1)
+                                        queuePlottingECG1.add(bufferSignalEMG1)
+                                        queuePlottingECG2.add(bufferSignalEMG2)
+                                        if (data[ii].gSense1_X != null) {
+                                            val gSense1_3axis = (data[ii].gSense1_X?.pow(2f)!! + data[ii].gSense1_Y?.pow(2f)!! + data[ii].gSense1_Z?.pow(2f)!!).pow(0.5f)
+                                            queuePlottingG1.add(gSense1_3axis)
+                                        }
+                                        else if (data[ii].gSense2_X != null) {
+                                            val gSense2_3axis = (data[ii].gSense2_X?.pow(2f)!! + data[ii].gSense2_Y?.pow(2f)!! + data[ii].gSense2_Z?.pow(2f)!!).pow(0.5f)
+                                            queuePlottingG2.add(gSense2_3axis)
+                                        }
+                                    }
+
+                                    posLastPoint = posNowPoint
+
+                                    updateLineChartValue(lineChartEMG, VISIBLE_COUNT, removalCounterEMG.toFloat(), *arrayOf(queuePlottingECG1, queuePlottingECG2))
+                                    updateLineChartValue(lineChartG, VISIBLE_COUNT, removalCounterG.toFloat(), *arrayOf(queuePlottingG1, queuePlottingG2))
+                                }
+                                removalCounterEMG += queuePlottingECG1.size
+                                removalCounterG += queuePlottingG1.size
+                            }
+                        }
+
+                        runOnUiThread {
+                            textIntro.text = "機器量測中"
+                            btnStartRecord.text = "結束紀錄"
+                        }
+                    }
+
+                    one.await()
+                    two.await()
+                }
+
+
+            }
+            else {
+                flagBtnStartRecord = false
+                flagPlotting = false
+                flagGetFile = false
+                btnGetData.isEnabled = true
+                // btnReadRemaining.isEnabled = true
+                // btnClearFlash.isEnabled = true
+
+                timerPlotting.cancel()
+                timerPlotting.purge()
+                timerCountSecond.cancel()
+                timerCountSecond.purge()
+                jobRecord.cancel()
+
+                Handler().postDelayed({
+                    //outputStreamEMG.close()
+                    //outputStreamG.close()
+
+                    val hex = cmdRealTimeClose.toString()
+                    BleManager.getInstance().write(
+                        bleDevice,
+                        bleUARTServiceUUID,
+                        bleUARTCharacteristicUUID,
+                        HexUtil.hexStringToBytes(hex),
+                        object : BleWriteCallback() {
+                            override fun onWriteSuccess(
+                                current: Int,
+                                total: Int,
+                                justWrite: ByteArray
+                            ) {
+                            }
+
+                            override fun onWriteFailure(exception: BleException) {
+                                runOnUiThread {
+                                    textIntro.text = "12: $exception"
+                                }
+                            }
+                        }
+                    )
+
+                    backgroundThreadRealm.beginTransaction()
+                    val dataList = backgroundThreadRealm
+                        .where(DataRecordList::class.java).findAll()
+                        .stream()
+                        .map(DataRecordList::createTime).collect(Collectors.toList())
+                    backgroundThreadRealm.commitTransaction()
+
+                    val adapter = ArrayAdapter(this.requireActivity(), android.R.layout.simple_spinner_dropdown_item, dataList)
+                    spinnerList.adapter = adapter
+                    // Log.d("", dataList.toString())
+
+                    runOnUiThread {
+                        textIntro.text = "量測結束"
+                        btnStartRecord.text = "開始紀錄"
+                    }
+                }, 300)
+
+            }
+        }
+
+        /*********************************
+         * Button
+         * Used for clearing the flash on the device
+         *********************************/
+        /*
+        btnClearFlash.setOnClickListener {
+            if (!flagClearingFlash) {
+                flagClearingFlash = true
+
+                val hex = cmdClearFlash.toString()
+                BleManager.getInstance().write(
+                    bleDevice,
+                    bleUARTServiceUUID,
+                    bleControlCharacteristicUUID,
+                    HexUtil.hexStringToBytes(hex),
+                    object : BleWriteCallback() {
+                        override fun onWriteSuccess(
+                            current: Int,
+                            total: Int,
+                            justWrite: ByteArray
+                        ) {
+                        }
+
+                        override fun onWriteFailure(exception: BleException) {
+                            runOnUiThread {
+                                textIntro.text = "03: $exception"
+                            }
+                        }
+                    }
+                )
+
+                runOnUiThread {
+                    textIntro.text = "Under Clearing"
+                    btnClearFlash.setBackgroundColor(Color.RED)
+                    btnGetData.isEnabled = false
+                    btnStartRecord.isEnabled = false
+                    btnReadRemaining.isEnabled = false
+                }
+
+                fixedRateTimer("", true, 0, 100) {
+                    if (dataReturnValue[0].toInt() == 1) {
+                        runOnUiThread {
+                            textIntro.text = "Clear OK!"
+                            btnGetData.isEnabled = true
+                            btnStartRecord.isEnabled = true
+                            btnReadRemaining.isEnabled = true
+                            btnClearFlash.setBackgroundColor(Color.LTGRAY)
+                        }
+                        flagClearingFlash = false
+                        dataReturnValue[0] = 0u  //Clear
+                        this.cancel()
+                    }
+                }
+            } else {
+                runOnUiThread {
+                    Toast.makeText(context, "The device is clearing!!", Toast.LENGTH_SHORT)
+                        .show()
+                }
+            }
+        }
+         */
+
+        /*********************************
+         * Button
+         * Used for detecting the remaining record time
+         *********************************/
+        /*
+        btnReadRemaining.setOnClickListener {
+            Handler().postDelayed({
+                val hex = cmdReadRemaining.toString()
+                runOnUiThread {
+                    btnGetData.isEnabled = false
+                    btnStartRecord.isEnabled = false
+                    btnClearFlash.isEnabled = false
+                }
+
+                BleManager.getInstance().write(
+                    bleDevice,
+                    bleUARTServiceUUID,
+                    bleControlCharacteristicUUID,
+                    HexUtil.hexStringToBytes(hex),
+                    object : BleWriteCallback() {
+                        override fun onWriteSuccess(
+                            current: Int,
+                            total: Int,
+                            justWrite: ByteArray
+                        ) {
+                        }
+
+                        override fun onWriteFailure(exception: BleException) {
+                            runOnUiThread {
+                                textIntro.text = "04: $exception"
+                            }
+                        }
+                    }
+                )
+            }, 500)
+
+            Handler().postDelayed({
+                val remainRecordTime = (dataReturnValue[0] * 256u + dataReturnValue[1]).toInt()
+                val remainRecordMinute = (remainRecordTime / 60)
+                val remainRecordSecond = (remainRecordTime % 60)
+                runOnUiThread {
+                    textIntro.text = "還可記錄\n $remainRecordMinute 分 $remainRecordSecond 秒"
+                    btnGetData.isEnabled = true
+                    btnStartRecord.isEnabled = true
+                    btnClearFlash.isEnabled = true
+                }
+            }, 800)
+        }
+
+         */
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun synchronizeState() {
+        //cannot be initialized in the scope of global because the fragment wasn't belong to any activity at that time
+        val bleDevice = (activity as MainActivity).getBleDevice()
+
+        val formatter = DateTimeFormatter.ofPattern("yyyy MM dd HH mm ss")
+        val timeParts = LocalDateTime.now().format(formatter).toString().split(" ")
+        val timeByte = ByteArray(7)
+        timeByte[0] = 0x01  //Command sent to the device for setting Time
+        timeByte[1] = timeParts[0].substring(2).toByte()
+        for (i in 2..6) {
+            timeByte[i] = timeParts[i - 1].toByte()
+        }
+
+        //Send time to device
+        BleManager.getInstance().write(
+            bleDevice,
+            bleUARTServiceUUID,
+            bleUARTCharacteristicUUID,
+            timeByte,
+            object : BleWriteCallback() {
+                override fun onWriteSuccess(
+                    current: Int,
+                    total: Int,
+                    justWrite: ByteArray
+                ) {
+                }
+
+                override fun onWriteFailure(exception: BleException) {}
+            }
+        )
+    }
+
+    private fun connectionDetection(v: View, bleDevice: BleDevice) {
+        fixedRateTimer("", true, 0, 1000) {
+            runOnUiThread {
+                val btnConnectionState = v.findViewById<Button>(R.id.btnConnectionState)
+                btnConnectionState.isEnabled = false
+                if (BleManager.getInstance().isConnected(bleDevice)) {
+                    btnConnectionState.setBackgroundColor(Color.GREEN)
+                } else {
+                    btnConnectionState.setBackgroundColor(Color.RED)
+                }
+            }
+        }
+    }
+
+    private fun writeDataToFile(fEMG: FileOutputStream, fG: FileOutputStream) {
+        fEMG.write(
+            (queueECG1.peek()?.toString() + " " + queueECG2.peek()?.toString() + "\n").toByteArray()
+        )
+
+        val iterG1: Iterator<Float> = queueG1.iterator()
+        val iterG2: Iterator<Float> = queueG2.iterator()
+
+        fG.write(
+            (iterG1.next().toString()
+                    + " " + iterG1.next().toString()
+                    + " " + iterG1.next().toString()
+                    + " " + iterG2.next().toString()
+                    + " " + iterG2.next().toString()
+                    + " " + iterG2.next().toString() + "\n").toByteArray()
+        )
+    }
+
+
+    private fun createChart(lineChart: LineChart) {
+        val yAxisRight = lineChart.axisRight
+        yAxisRight.isEnabled = false
+        val yAxisLeft = lineChart.axisLeft
+        //yAxisLeft.isEnabled = false
+        yAxisLeft.granularity = 1f
+        yAxisLeft.axisMinimum = -300F
+        yAxisLeft.axisMaximum = 300F
+
+
+        dataSetECG1.clear()
+        dataSetECG1.setDrawValues(false)
+        dataSetECG1.color = Color.RED
+        dataSetECG1.setDrawCircles(false)
+
+        dataSetECG2.clear()
+        dataSetECG2.setDrawValues(false)
+        dataSetECG2.color = Color.GREEN
+        dataSetECG2.setDrawCircles(false)
+
+        lineChart.data = LineData(dataSetECG1, dataSetECG2)
+        removeAnEntry(lineChart, 0f)
+    }
+
+    private fun createChartG(lineChart: LineChart) {
+        val yAxisRight = lineChart.axisRight
+        yAxisRight.isEnabled = false
+        val yAxisLeft = lineChart.axisLeft
+        //yAxisLeft.isEnabled = false
+        yAxisLeft.granularity = 1f
+
+        dataSetG1.clear()
+        dataSetG1.setDrawValues(false)
+        dataSetG1.color = Color.BLUE
+        dataSetG1.setDrawCircles(false)
+
+        dataSetG2.clear()
+        dataSetG2.setDrawValues(false)
+        dataSetG2.color = Color.DKGRAY
+        dataSetG2.setDrawCircles(false)
+
+        lineChart.data = LineData(dataSetG1, dataSetG2)
+        removeAnEntry(lineChart, 0f)
+    }
+
+    private fun createChartECG(lineChart: LineChart) {
+        val yAxisRight = lineChart.axisRight
+        yAxisRight.isEnabled = false
+        val yAxisLeft = lineChart.axisLeft
+        //yAxisLeft.isEnabled = false
+        yAxisLeft.granularity = 1f
+
+        dataSetECG1.setDrawValues(false)
+        dataSetECG1.color = Color.RED
+        dataSetECG1.setDrawCircles(false)
+
+        lineChart.data = LineData(dataSetECG1)
+        removeAnEntry(lineChart, 0f)
+    }
+
+
+    private fun removeAnEntry(lineChart: LineChart, pos: Float) {
+        val data: LineData = lineChart.data
+        data.removeEntry(pos, 0)
+        data.removeEntry(pos, 1)
+        data.removeEntry(pos, 2)
+        data.removeEntry(pos, 3)
+        data.notifyDataChanged()
+    }
+
+    private fun runOnUiThread(runnable: () -> Unit) {
+        if (isAdded && activity != null)
+            requireActivity().runOnUiThread(runnable)
+    }
+
+    private fun getExternalStoragePrivateDir(): File {
+        val file = File(context?.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "z2b")
+        if (!file.mkdirs()) {
+            Log.e("", "Directory not created or exist")
+        }
+        return file
+    }
+
+    private fun signalFilterForEMG(value: Float, channel: Int) : Float {
+        var result = 0f
+
+        for (k in FiltVar.filterOrder -1 downTo 1) {
+            FiltVar.bufferEMGFilter[channel][k] = FiltVar.bufferEMGFilter[channel][k - 1]
+        }
+
+        FiltVar.bufferEMGFilter[channel][0] = value
+        for (k in 1 until FiltVar.filterOrder) {
+            FiltVar.bufferEMGFilter[channel][0] -= FiltVar.denomCoeff[k] * FiltVar.bufferEMGFilter[channel][k]
+        }
+        for (k in 0 until FiltVar.filterOrder) {
+            result += FiltVar.numCoeff[k] * FiltVar.bufferEMGFilter[channel][k]
+        }
+
+        return result
+    }
+
+    object FiltVar {
+        const val filterOrder = 5
+        /* a in Matlab */
+        val denomCoeff = floatArrayOf(
+            1F,
+            (-1.98694463210641).toFloat(), 1.17163274627209F,
+            (-0.356031777589139).toFloat(), 0.171632746272085F
+        )
+        /* b in Matlab */
+        val numCoeff = floatArrayOf(
+            0.288307384738367F, 0F, (-0.576614769476735).toFloat(), 0F, 0.288307384738367F
+        )
+
+        var bufferEMGFilter: ArrayList<FloatArray> = arrayListOf(
+            floatArrayOf(0f, 0f, 0f, 0f, 0f),
+            floatArrayOf(0f, 0f, 0f, 0f, 0f)
+        )
+    }
+
+    private fun addText(textView: TextView, content: String) {
+        textView.append(content)
+        textView.append("\n")
+        val offset = textView.lineCount * textView.lineHeight
+        if (offset > textView.height) {
+            textView.scrollTo(0, offset - textView.height)
+        }
+    }
+
+    @ExperimentalUnsignedTypes
+    private fun checkUnsignedPoint(point: UInt) : Int {
+        return if (point.toInt() > 32768) {
+            point.toInt() - 65536
+        } else {
+            point.toInt()
+        }
+    }
+
+    companion object {
+        @JvmStatic
+        fun newInstance(param1: String, param2: String) =
+            ShowChartFragment().apply {
+                arguments = Bundle().apply {
+                    putString(ARG_PARAM1, param1)
+                    putString(ARG_PARAM2, param2)
+                }
+            }
+    }
+}

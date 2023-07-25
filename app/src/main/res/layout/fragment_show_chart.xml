@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/ConstraintLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".MainActivity"
+    tools:visibility="visible">
+
+    <SurfaceView
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginBottom="731dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guidelineChartTop"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.07" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guideBtnLeft"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.28" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guideBtnLeft4"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.72" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guideBtnLeft2"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.05" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guideBtnLeft3"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.95" />
+
+    <com.github.mikephil.charting.charts.LineChart
+        android:id="@+id/chartEMG"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toTopOf="@+id/guidelineChartBottom"
+        app:layout_constraintEnd_toStartOf="@+id/guideBtnLeft3"
+        app:layout_constraintStart_toStartOf="@+id/guideBtnLeft2"
+        app:layout_constraintTop_toTopOf="@+id/guidelineChartTop" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guidelineChartBottom"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.55" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guidelineBtn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.7" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guidelineBtn4"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.78" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guidelineBtn3"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.84" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guidelineBtn2"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.62" />
+
+    <Button
+        android:id="@+id/btnShowAll"
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        android:text="View"
+        app:layout_constraintBottom_toTopOf="@+id/guidelineBtn4"
+        app:layout_constraintEnd_toStartOf="@+id/guideBtnLeft"
+        app:layout_constraintStart_toStartOf="@+id/guideBtnLeft2"
+        app:layout_constraintTop_toTopOf="@+id/guidelineBtn" />
+
+    <Button
+        android:id="@+id/btnStartRecord"
+        android:layout_width="148dp"
+        android:layout_height="0dp"
+        android:text="開始記錄"
+        app:layout_constraintBottom_toTopOf="@+id/guidelineBtn4"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/guidelineBtn" />
+
+    <Button
+        android:id="@+id/btnGetData"
+        android:layout_width="0dp"
+        android:layout_height="55dp"
+        android:text="傳出資料"
+        app:layout_constraintEnd_toStartOf="@+id/guideBtnLeft"
+        app:layout_constraintStart_toStartOf="@+id/guideBtnLeft2"
+        app:layout_constraintTop_toTopOf="@+id/guidelineBtn3" />
+
+    <TextView
+        android:id="@+id/textSecond"
+        android:layout_width="151dp"
+        android:layout_height="35dp"
+        android:layout_marginEnd="44dp"
+        android:text="量測時間 :"
+        android:textSize="18sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/guidelineBtn3" />
+
+    <Spinner
+        android:id="@+id/spinnerList"
+        android:layout_width="256dp"
+        android:layout_height="37dp"
+        app:layout_constraintBottom_toTopOf="@+id/guidelineBtn"
+        app:layout_constraintEnd_toStartOf="@+id/btnClearData"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/guidelineBtn2" />
+
+    <TextView
+        android:id="@+id/textIntro"
+        android:layout_width="123dp"
+        android:layout_height="45dp"
+        android:layout_marginEnd="60dp"
+        android:layout_marginBottom="16dp"
+        android:gravity="center"
+        android:textSize="20sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <Button
+        android:id="@+id/btnPlaySound"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:text="Sound"
+        app:layout_constraintBottom_toTopOf="@+id/guidelineBtn4"
+        app:layout_constraintEnd_toStartOf="@+id/guideBtnLeft3"
+        app:layout_constraintStart_toStartOf="@+id/guideBtnLeft4"
+        app:layout_constraintTop_toTopOf="@+id/guidelineBtn" />
+
+    <RadioGroup
+        android:id="@+id/rBtnGroupRecordPlace"
+        android:layout_width="0dp"
+        android:layout_height="41dp"
+        android:orientation="horizontal"
+        app:layout_constraintBottom_toTopOf="@+id/guidelineBtn2"
+        app:layout_constraintEnd_toStartOf="@+id/guideBtnLeft3"
+        app:layout_constraintStart_toStartOf="@+id/guideBtnLeft2">
+
+        <RadioButton
+            android:id="@+id/rBtnLungSound"
+            android:layout_width="185dp"
+            android:layout_height="match_parent"
+            android:text="Lung Sound" />
+
+        <RadioButton
+            android:id="@+id/rBtnHeartSound"
+            android:layout_width="185dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:text="Heart Sound" />
+
+    </RadioGroup>
+
+    <Button
+        android:id="@+id/btnClearData"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="清除全部資料"
+        app:layout_constraintBottom_toTopOf="@+id/btnPlaySound"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@+id/spinnerList"
+        app:layout_constraintTop_toBottomOf="@+id/rBtnGroupRecordPlace" />
+
+    <EditText
+        android:id="@+id/showTime"
+        android:layout_width="227dp"
+        android:layout_height="39dp"
+        android:layout_marginStart="76dp"
+        android:ems="10"
+        android:hint="請輸入時間長度(預設5S)"
+        android:inputType="number"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@+id/textSecond"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/btnStartRecord"
+        tools:visibility="gone" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

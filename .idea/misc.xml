@@ -1,0 +1,48 @@
+<project version="4">
+  <component name="DesignSurface">
+    <option name="filePathToZoomLevelMap">
+      <map>
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/activity_login_personal.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/activity_main.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/activity_record_personal_data.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/adapter_device.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/adapter_service.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/app_bar_main.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/array.xml" value="0.36614583333333334" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/content_main.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/dialog.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/fragment_characteric_list.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/fragment_characteric_operation.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/fragment_main.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/fragment_service_list.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/fragment_show_chart.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/layout_characteric_operation.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/layout_characteric_operation_button.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/layout_characteric_operation_et.xml" value="0.2957427536231884" />
+        <entry key="..\:/Users/User/Downloads/realtimeplottingapp-main/realtimeplottingapp-main/app/src/main/res/layout/line_chart.xml" value="0.2957427536231884" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ChartPlotForLAB_verHS/app/src/main/res/layout/activity_login_personal.xml" value="0.36614583333333334" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ChartPlotForLAB_verHS/app/src/main/res/layout/activity_main.xml" value="0.36614583333333334" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ChartPlotForLAB_verHS/app/src/main/res/layout/activity_record_personal_data.xml" value="0.36614583333333334" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ChartPlotForLAB_verHS/app/src/main/res/layout/adapter_device.xml" value="0.36614583333333334" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ChartPlotForLAB_verHS/app/src/main/res/layout/adapter_service.xml" value="0.36614583333333334" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ChartPlotForLAB_verHS/app/src/main/res/layout/app_bar_main.xml" value="0.36614583333333334" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ChartPlotForLAB_verHS/app/src/main/res/layout/content_main.xml" value="0.36614583333333334" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ChartPlotForLAB_verHS/app/src/main/res/layout/fragment_characteric_list.xml" value="0.36614583333333334" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ChartPlotForLAB_verHS/app/src/main/res/layout/fragment_characteric_operation.xml" value="0.36614583333333334" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ChartPlotForLAB_verHS/app/src/main/res/layout/fragment_main.xml" value="0.36614583333333334" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ChartPlotForLAB_verHS/app/src/main/res/layout/fragment_show_chart.xml" value="0.23333333333333334" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ChartPlotForLAB_verHS/app/src/main/res/layout/layout_characteric_operation.xml" value="0.36614583333333334" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ChartPlotForLAB_verHS/app/src/main/res/layout/layout_characteric_operation_button.xml" value="0.36614583333333334" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ChartPlotForLAB_verHS/app/src/main/res/layout/layout_characteric_operation_et.xml" value="0.36614583333333334" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ChartPlotForLAB_verHS/app/src/main/res/layout/line_chart.xml" value="0.2359375" />
+        <entry key="..\:/Work/Labortory/Workspace/AndroidStudio/ECG-EMG_with_G-sensor_Kotlin/app/src/main/res/layout/fragment_show_chart.xml" value="0.24479166666666666" />
+      </map>
+    </option>
+  </component>
+  <component name="ProjectRootManager" version="2" languageLevel="JDK_17" project-jdk-name="jbr-17" project-jdk-type="JavaSDK">
+    <output url="file://$PROJECT_DIR$/build/classes" />
+  </component>
+  <component name="ProjectType">
+    <option name="id" value="Android" />
+  </component>
+</project>

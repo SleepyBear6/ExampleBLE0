@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="Gradle: com.github.ReactiveX:RxKotlin:2.x-SNAPSHOT">
+    <CLASSES>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.ReactiveX/RxKotlin/2.x-SNAPSHOT/8c9da04b55a725633d93209f17769ce35d45d5e4/RxKotlin-2.x-SNAPSHOT.jar!/" />
+    </CLASSES>
+    <JAVADOC>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.ReactiveX/RxKotlin/2.x-SNAPSHOT/5d178fe23b53505c56460bb87928b1c553c186bb/RxKotlin-2.x-SNAPSHOT-javadoc.jar!/" />
+    </JAVADOC>
+    <SOURCES>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.ReactiveX/RxKotlin/2.x-SNAPSHOT/8c440d51028a87e1a91d765bb663e2e8bbbb22be/RxKotlin-2.x-SNAPSHOT-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>

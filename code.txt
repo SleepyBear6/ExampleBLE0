@@ -1,0 +1,1040 @@
+package com.exampleble.fragment
+
+
+import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
+import android.graphics.Color
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.CountDownTimer
+import android.os.Environment
+import android.util.Log
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.EditText
+import android.widget.TextView
+import android.widget.Toast
+import androidx.annotation.RequiresApi
+import androidx.documentfile.provider.DocumentFile
+import androidx.fragment.app.Fragment
+import com.clj.fastble.BleManager
+import com.clj.fastble.callback.BleNotifyCallback
+import com.clj.fastble.callback.BleWriteCallback
+import com.clj.fastble.data.BleDevice
+import com.clj.fastble.exception.BleException
+import com.clj.fastble.utils.HexUtil
+import com.desarollobluetooth.fragments.ARG_PARAM1
+import com.desarollobluetooth.fragments.ARG_PARAM2
+import com.exampleble.MainActivity
+import com.exampleble.R
+import com.exampleble.activity.PersonalData
+import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.data.LineDataSet
+import kotlinx.android.synthetic.main.fragment_show_chart.*
+import kotlinx.coroutines.*
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.io.OutputStream
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.*
+import java.util.concurrent.ConcurrentLinkedQueue
+import kotlin.concurrent.*
+import kotlin.math.sqrt
+
+
+class ShowChartFragment:Fragment() {
+
+    private val bleUARTServiceUUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
+    private val bleUARTCharacteristicUUID = "6e40E00C-b5a3-f393-e0a9-e50e24dcca9e"
+
+    private var flagECGTransmissionOn = false  //Used to detect whether the transmission is opened or not
+    private var flagSendFile = false
+
+    private val cmdRealTimeOpen = 11
+    private val cmdRealTimeClose = 12
+    private val cmdRealTimeECG1Send = 13
+    private val cmdRealTimeECG2Send = 14
+    private val cmdRealTimeGsensor1Send = 15
+    private val cmdRealTimeGsensor2Send = 16
+    private val cmdFileSend = 17
+    private val cmdFileReturnValue = 18
+
+    private var WRITE_REQUEST_CODE = 10001
+    private var REQUEST_CODE_FOR_DIR = 10002
+
+    private var mFileUri: Uri? = null
+    private val mInfo: TextView? = null
+    private var flagCreateFile = false
+
+    var queueDrawing = ConcurrentLinkedQueue<Float>()
+    val queueECG1 = ConcurrentLinkedQueue<Int>()
+    val queueECG2 = ConcurrentLinkedQueue<Int>()
+    val queueG1 = ConcurrentLinkedQueue<Int>()
+    val queueG2 = ConcurrentLinkedQueue<Int>()
+
+    val axisDrawing = arrayListOf<Float>()
+    private var typeOfSignal = 1
+    private var countOfDrawing = 0
+    private var removalCounter = 0
+
+    private val VISIBLE_COUNT: Float = 750f
+
+    private val filterOrder = 5
+    private val denomCoeff = floatArrayOf(1F,
+        (-2.98322355054010).toFloat(), 3.32403906990596F,
+        (-1.69318838631086).toFloat(), 0.352409911463455F
+    )
+
+    private val numCoeff = floatArrayOf(
+        0.0893221124977632F, 0F, (-0.178644224995526).toFloat(), 0F, 0.0893221124977632F
+    )
+
+
+    @ExperimentalUnsignedTypes
+    @RequiresApi(Build.VERSION_CODES.O)
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View? {
+        val v = inflater.inflate(R.layout.fragment_show_chart, null)
+
+        synchronizeState(v)
+        initButton(v)
+
+        return v
+    }
+
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun synchronizeState(v: View) {
+        //cannot be initialized in the scope of global because the fragment wasn't belong to any activity at that time
+        val bleDevice = (activity as MainActivity).getBleDevice()
+        val dataField = v.findViewById(R.id.textView1) as TextView
+
+
+        val time = LocalDateTime.now()
+        val formatter = DateTimeFormatter.ofPattern("yyyy MM dd HH mm ss")
+        val timeParts = time.format(formatter).toString().split(" ")
+        val timeByte = ByteArray(7)
+        timeByte[0] = 0x01
+        timeByte[1] = timeParts[0].substring(2).toByte()
+        for (i in 2..6) {
+            timeByte[i] = timeParts[i - 1].toByte()
+        }
+
+        //Send time to device
+        BleManager.getInstance().write(
+            bleDevice,
+            bleUARTServiceUUID,
+            bleUARTCharacteristicUUID,
+            timeByte,
+            object : BleWriteCallback() {
+                override fun onWriteSuccess(
+                    current: Int,
+                    total: Int,
+                    justWrite: ByteArray
+                ) {
+                    /*
+                    runOnUiThread(Runnable {
+                    })
+                     */
+                }
+
+                override fun onWriteFailure(exception: BleException) {
+                    runOnUiThread {
+                        addText(
+                            dataField,
+                            "Time: $exception"
+                        )
+                    }
+                }
+            }
+        )
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    @ExperimentalUnsignedTypes
+    private fun initButton(v: View) {
+        val bleDevice = (activity as MainActivity).getBleDevice()
+        val dataField = v.findViewById(R.id.textView1) as TextView
+        val btnUser = v.findViewById<Button>(R.id.btnSetUserInfo)
+        val btnECG = v.findViewById<Button>(R.id.btnECG)
+        val btnSigECG1 = v.findViewById<Button>(R.id.btnSigECG1)
+        val btnSigECG2 = v.findViewById<Button>(R.id.btnSigECG2)
+        val btnSigGsens1 = v.findViewById<Button>(R.id.btnSigGsens1)
+        val btnSigGsens2 = v.findViewById<Button>(R.id.btnSigGsens2)
+        val btnRecordFile = v.findViewById<Button>(R.id.btnRecordFile)
+        val lineChart = v.findViewById(R.id.bar_line) as LineChart
+
+
+        //Record Personal Data
+        btnUser.setOnClickListener {
+            val userIntent = Intent(activity, PersonalData::class.java)
+            startActivity(userIntent)
+        }
+
+        btnECG.setOnClickListener {
+
+            if (!flagECGTransmissionOn) {
+                flagECGTransmissionOn = true
+                axisDrawing.clear()
+                countOfDrawing = 0
+
+                Thread {
+                    //ECG Notify
+                    BleManager.getInstance().notify(
+                        bleDevice,
+                        bleUARTServiceUUID,
+                        bleUARTCharacteristicUUID,//characteristic.uuid.toString(),
+                        object : BleNotifyCallback() {
+                            override fun onNotifySuccess() {
+                                /*
+                            runOnUiThread(Runnable {
+                            })
+                            */
+                            }
+
+                            override fun onNotifyFailure(exception: BleException) {
+                                runOnUiThread {
+                                    addText(
+                                        dataField,
+                                        "ECG Notify $exception"
+                                    )
+                                }
+                            }
+
+                            override fun onCharacteristicChanged(data: ByteArray) {
+                                if (flagECGTransmissionOn) {
+                                    runBlocking {
+                                        launch(Dispatchers.IO) {
+                                            val uData =
+                                                data.toUByteArray()   //changed signed data to unsigned data
+                                            val bufferSize = data.size/2
+
+                                            val buffer = floatArrayOf(0f,0f,0f)
+                                            var i_tmp = 0
+                                            for (j in 0 until bufferSize) {
+                                                var tmp =
+                                                    (uData[2 * j] * 256u + uData[2 * j + 1]).toFloat()
+                                                if (tmp >= 32768) {
+                                                    tmp -= 65535
+                                                }
+
+                                                axisDrawing.add(tmp)
+                                                //Adjust drawing Size
+                                                tmp *= 6.15f
+                                                //can't use index to append directly, use "add"
+
+                                                when (typeOfSignal)
+                                                {
+                                                    1, 2 -> queueDrawing.add(tmp)
+                                                    3, 4 -> {
+                                                        buffer[i_tmp++] = tmp
+                                                        if (i_tmp == 3)
+                                                        {
+                                                            val buffer2 = buffer.map { n: Float -> n * n }
+                                                            var tmp2 = 0F
+                                                            for (i in 0..2)
+                                                            {
+                                                                tmp2 += buffer2[i]
+                                                            }
+                                                            queueDrawing.add(sqrt(tmp2))
+                                                            i_tmp = 0
+                                                        }
+                                                    }
+                                                }
+
+                                                /*
+                                                runOnUiThread {
+                                                    queueECG.peek()?.toString()?.let { it ->
+                                                        addText(
+                                                            dataField,
+                                                            it
+                                                        )
+                                                    }
+                                                }
+                                                */
+                                                countOfDrawing++
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    )
+
+                    Thread.sleep(400)
+
+                    //ECG Write Command
+                    val hex = cmdRealTimeOpen.toString()
+
+                    BleManager.getInstance().write(
+                        bleDevice,
+                        bleUARTServiceUUID,
+                        bleUARTCharacteristicUUID,//characteristic.uuid.toString(),
+                        HexUtil.hexStringToBytes(hex),
+                        object : BleWriteCallback() {
+                            override fun onWriteSuccess(
+                                current: Int,
+                                total: Int,
+                                justWrite: ByteArray
+                            ) {
+                            }
+
+                            override fun onWriteFailure(exception: BleException) {
+                                runOnUiThread {
+                                    addText(
+                                        dataField,
+                                        "ECG $exception"
+                                    )
+                                }
+                            }
+                        }
+                    )
+                }.start()
+
+                //CountDown Timer
+                val textTime = v.findViewById<TextView>(R.id.textTime)
+                val textSecondInput = v.findViewById<EditText>(R.id.textSecondInput)
+                textSecondInput.isEnabled = false
+                var intSecond = 0
+
+                val inputTime = textSecondInput.text.toString()
+
+                intSecond = if (inputTime != "") {
+                    Integer.valueOf(inputTime)
+                } else {
+                    30
+                }
+                if (intSecond > 0) {
+                    /**Using Coroutine to be a countdown Timer.
+                     * Don't use Timer or postDelayed because they wouldn't stop.
+                     * The reason is that it would be seen as creating a new instance to stop it
+                     * then doesn't stop the original one.
+                     * This method could also be created with Thread
+                     * However, Coroutine take the advantage of full control,
+                     * you can decide where to pause and where to resume, which is different from Thread.
+                     **/
+                    /**
+                     * Three Works:
+                     * 1. Plot the chart
+                     * 2. CountDown Timer
+                     **/
+                    GlobalScope.launch(Dispatchers.Default) {
+                        val one = async{
+                            plotChart(lineChart)
+                        }
+
+                        val two = async{
+                            while(true) {
+                                val size = axisDrawing.size
+                                if (size >= intSecond*250) {
+                                    break
+                                } else {
+                                    val remainingTime = intSecond - size/250
+                                    runOnUiThread {
+                                        if (remainingTime.toString() != textTime.text) {
+                                            textTime.text = remainingTime.toString()
+                                        }
+                                    }
+                                    delay(50)
+                                }
+                            }
+                            stopMeasure(bleDevice!!)
+                        }
+
+                        one.await()
+                        two.await()
+                    }
+                }
+
+            }else {
+                stopMeasure(bleDevice!!)
+            }
+        }
+
+        btnSigECG1.setOnClickListener {
+            if (flagECGTransmissionOn)
+            {
+                //Write "Read ECG1 Command"
+                val hex = cmdRealTimeECG1Send.toString()
+                BleManager.getInstance().write(
+                    bleDevice,
+                    bleUARTServiceUUID,
+                    bleUARTCharacteristicUUID,//characteristic.uuid.toString(),
+                    HexUtil.hexStringToBytes(hex),
+                    object : BleWriteCallback() {
+                        override fun onWriteSuccess(
+                            current: Int,
+                            total: Int,
+                            justWrite: ByteArray
+                        ) {
+                        }
+
+                        override fun onWriteFailure(exception: BleException) {
+                            runOnUiThread {
+                                addText(
+                                    dataField,
+                                    "ECG1 $exception"
+                                )
+                            }
+                        }
+                    }
+                )
+
+                typeOfSignal = 1
+                clearChart(lineChart)
+            }
+        }
+
+        btnSigECG2.setOnClickListener {
+            if (flagECGTransmissionOn)
+            {
+                //Write "Read ECG1 Command"
+                val hex = cmdRealTimeECG2Send.toString()
+                BleManager.getInstance().write(
+                    bleDevice,
+                    bleUARTServiceUUID,
+                    bleUARTCharacteristicUUID,//characteristic.uuid.toString(),
+                    HexUtil.hexStringToBytes(hex),
+                    object : BleWriteCallback() {
+                        override fun onWriteSuccess(
+                            current: Int,
+                            total: Int,
+                            justWrite: ByteArray
+                        ) {
+                        }
+
+                        override fun onWriteFailure(exception: BleException) {
+                            runOnUiThread {
+                                addText(
+                                    dataField,
+                                    "ECG2 $exception"
+                                )
+                            }
+                        }
+                    }
+                )
+
+                typeOfSignal = 2
+                clearChart(lineChart)
+            }
+        }
+
+        btnSigGsens1.setOnClickListener {
+            if (flagECGTransmissionOn)
+            {
+                //Write "Read ECG1 Command"
+                val hex = cmdRealTimeGsensor1Send.toString()
+                BleManager.getInstance().write(
+                    bleDevice,
+                    bleUARTServiceUUID,
+                    bleUARTCharacteristicUUID,//characteristic.uuid.toString(),
+                    HexUtil.hexStringToBytes(hex),
+                    object : BleWriteCallback() {
+                        override fun onWriteSuccess(
+                            current: Int,
+                            total: Int,
+                            justWrite: ByteArray
+                        ) {
+                        }
+
+                        override fun onWriteFailure(exception: BleException) {
+                            runOnUiThread {
+                                addText(
+                                    dataField,
+                                    "G1 $exception"
+                                )
+                            }
+                        }
+                    }
+                )
+
+                typeOfSignal = 3
+                clearChart(lineChart)
+            }
+        }
+
+        btnSigGsens2.setOnClickListener {
+            if (flagECGTransmissionOn)
+            {
+                //Write "Read ECG1 Command"
+                val hex = cmdRealTimeGsensor2Send.toString()
+                BleManager.getInstance().write(
+                    bleDevice,
+                    bleUARTServiceUUID,
+                    bleUARTCharacteristicUUID,//characteristic.uuid.toString(),
+                    HexUtil.hexStringToBytes(hex),
+                    object : BleWriteCallback() {
+                        override fun onWriteSuccess(
+                            current: Int,
+                            total: Int,
+                            justWrite: ByteArray
+                        ) {
+                        }
+
+                        override fun onWriteFailure(exception: BleException) {
+                            runOnUiThread {
+                                addText(
+                                    dataField,
+                                    "G2 $exception"
+                                )
+                            }
+                        }
+                    }
+                )
+
+                typeOfSignal = 4
+                clearChart(lineChart)
+            }
+        }
+
+        btnRecordFile.setOnClickListener {
+            if (!flagSendFile) {
+                /**
+                 * 1. stopMeasure
+                 * 2. re-notify
+                 */
+                val queueRecording = ConcurrentLinkedQueue<Byte>()
+                var numberGetFile = 0
+                var countGetFile = 0
+                var timeoutGetByte = 0
+                var flagStandBy = true
+                var flagWritingState = false
+
+                stopMeasure(bleDevice!!)
+
+                BleManager.getInstance().notify(
+                    bleDevice,
+                    bleUARTServiceUUID,
+                    bleUARTCharacteristicUUID,//characteristic.uuid.toString(),
+                    object : BleNotifyCallback() {
+                        override fun onNotifySuccess() {
+                        }
+
+                        override fun onNotifyFailure(exception: BleException) {
+                            runOnUiThread {
+                                addText(
+                                    dataField,
+                                    "Get Data $exception"
+                                )
+                            }
+                        }
+
+                        override fun onCharacteristicChanged(data: ByteArray) {
+                            timeoutGetByte = 0
+                            if (!flagStandBy) {
+                                for (element in data) {
+                                    queueRecording.add(element)
+                                    countGetFile++
+                                }
+                            } else if (numberGetFile == 0) {
+                                numberGetFile = data[0] * 256 + data[1]
+                                flagStandBy = false
+                            }
+                        }
+                    }
+                )
+
+                val hex = cmdFileSend.toString()
+                BleManager.getInstance().write(
+                    bleDevice,
+                    bleUARTServiceUUID,
+                    bleUARTCharacteristicUUID,//characteristic.uuid.toString(),
+                    HexUtil.hexStringToBytes(hex),
+                    object : BleWriteCallback() {
+                        override fun onWriteSuccess(
+                            current: Int,
+                            total: Int,
+                            justWrite: ByteArray
+                        ) {
+                        }
+
+                        override fun onWriteFailure(exception: BleException) {
+                            runOnUiThread {
+                                addText(
+                                    dataField,
+                                    "File $exception"
+                                )
+                            }
+                        }
+                    }
+                )
+
+                val time = LocalDateTime.now()
+                val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss")
+                val fileName = time.format(formatter) + ".txt"  //.z2b
+
+                val dir = getExternalStoragePrivateDir()
+                val f = File(dir, fileName)
+                val outputStream = FileOutputStream(f)
+
+
+                val scopeFile = GlobalScope.launch(Dispatchers.IO) {
+                    val one = async {
+                        /**Wait for writing the data to the file**/
+                        while (true) {
+                            if (flagStandBy) {
+                                if (countGetFile >= numberGetFile && !queueRecording.isEmpty()) {
+                                    flagWritingState = true
+                                    val num = countGetFile
+                                    for (i in 1..num) {
+                                        outputStream.write(
+                                            (queueRecording.poll().toString()).toByteArray()
+                                        )
+                                    }
+                                    flagWritingState = false
+                                }
+                            }
+                            delay(50L)
+                        }
+                    }
+
+                    val two = async {
+                        while (true) {
+                            //detect for 600ms
+                            if (timeoutGetByte > 20 || countGetFile >= numberGetFile) {
+                                flagStandBy = true
+                                delay(100L)
+
+                                val tmp: ByteArray = byteArrayOf(0x00, 0x00, 0x00)
+                                tmp[0] = cmdFileReturnValue.toByte()
+                                tmp[1] = ((countGetFile ushr 8) and 0xFF).toByte()
+                                tmp[2] = ((countGetFile) and 0xFF).toByte()
+
+                                BleManager.getInstance().write(
+                                    bleDevice,
+                                    bleUARTServiceUUID,
+                                    bleUARTCharacteristicUUID,//characteristic.uuid.toString(),
+                                    tmp,
+                                    object : BleWriteCallback() {
+                                        override fun onWriteSuccess(
+                                            current: Int,
+                                            total: Int,
+                                            justWrite: ByteArray
+                                        ) {
+                                        }
+
+                                        override fun onWriteFailure(exception: BleException) {
+                                            runOnUiThread {
+                                                addText(
+                                                    dataField,
+                                                    "File $exception"
+                                                )
+                                            }
+                                        }
+                                    }
+                                )
+
+                                numberGetFile = 0
+                                countGetFile = 0
+                                timeoutGetByte = 0
+
+                                object : CountDownTimer(400, 10) {
+                                    override fun onFinish() {
+                                        BleManager.getInstance().stopNotify(
+                                            bleDevice,
+                                            bleUARTServiceUUID,
+                                            bleUARTCharacteristicUUID
+                                        )
+
+                                        while (flagWritingState) {
+                                            true
+                                        }
+
+                                        try {
+                                            outputStream.close()
+                                            runOnUiThread {
+                                                Toast.makeText(
+                                                    context,
+                                                    "Write File Success!",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        } catch (e: Exception) { }
+
+                                        flagSendFile = false
+                                    }
+
+                                    override fun onTick(millisUntilFinished: Long) {
+                                        if (numberGetFile != 0) {
+                                            cancel()
+                                        }
+                                    }
+                                }.start()
+                            }
+                            timeoutGetByte++
+                            delay(30L)
+                        }
+                    }
+
+                    one.await()
+                    two.await()
+                }
+            }
+            else {
+                Toast.makeText(context, "Wait for Sending Files", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /********************Plot Chart Function***********************/
+    private fun plotChart(lineChart: LineChart) {
+        val entriesECGL1 = arrayListOf<Entry>(Entry(0f, 0f))
+
+        removalCounter = 0
+
+        val yAxisRight = lineChart.axisRight
+        yAxisRight.isEnabled = false
+        val yAxisLeft = lineChart.axisLeft
+        //yAxisLeft.isEnabled = false
+        yAxisLeft.granularity = 1f
+        yAxisLeft.axisMaximum = 4000f
+        yAxisLeft.axisMinimum = -3500f
+
+        val dataSetECGL1 = LineDataSet(entriesECGL1, "ECG value")
+        dataSetECGL1.setDrawValues(false)
+        dataSetECGL1.color = Color.BLACK
+        dataSetECGL1.setDrawCircles(false)
+        val ptPerRound = 4
+
+        lineChart.data = LineData(dataSetECGL1)
+        removeAnEntry(lineChart, 0, 0f)
+
+        var averageBuffer = 0f
+        val bufferFilter = floatArrayOf(0f, 0f, 0f, 0f, 0f)
+        val timer = Timer()
+
+        timer.schedule(100, ptPerRound * 4L) {
+            if (flagECGTransmissionOn) {
+                runOnUiThread {
+                    //countOfECG need to be minus 1 to prevent countOfECG changes beforehand
+                    for (i in 0 until ptPerRound) {
+                        if (!queueDrawing.isEmpty()) {
+                            val data: LineData = lineChart.data
+                            val set: LineDataSet = data.getDataSetByIndex(0) as LineDataSet
+
+
+                            var bufferSignal = queueDrawing.poll()!!
+                            if (typeOfSignal < 3) {
+                                //use 250 points to get average value
+                                averageBuffer = averageBuffer * 0.996f + bufferSignal * 0.004f
+                                val pt = bufferSignal - averageBuffer
+                                //Bandpass Filter : 0.4 ~ 35 Hz
+                                for (k in filterOrder - 1 downTo 1) {
+                                    bufferFilter[k] = bufferFilter[k - 1]
+                                }
+                                bufferFilter[0] = pt
+                                for (k in 1 until filterOrder) {
+                                    bufferFilter[0] -= denomCoeff[k] * bufferFilter[k]
+                                }
+                                bufferSignal = 0f
+                                for (k in 0 until filterOrder) {
+                                    bufferSignal += numCoeff[k] * bufferFilter[k]
+                                }
+                            } else {
+                                averageBuffer = averageBuffer * 0.99f + bufferSignal * 0.01f
+                                bufferSignal -= averageBuffer
+                            }
+
+                            data.addEntry(
+                                Entry(
+                                    (set.entryCount + removalCounter).toFloat(),  //+removalCounter
+                                    bufferSignal
+                                ), 0
+                            )
+                            data.notifyDataChanged()
+                        }
+                    }
+
+                    val data: LineData = lineChart.data
+                    val set: LineDataSet = data.getDataSetByIndex(0) as LineDataSet
+                    if (set.entryCount-ptPerRound > VISIBLE_COUNT) {
+                        for (j in 0 until ptPerRound) {
+                            lineChart.data.removeEntry(removalCounter.toFloat(), 0)
+                            removalCounter++
+                        }
+
+                        // move to the latest entry
+                        lineChart.moveViewToX((set.entryCount + removalCounter).toFloat() - VISIBLE_COUNT)
+                    }
+
+                    lineChart.setVisibleXRangeMaximum(VISIBLE_COUNT)
+                    lineChart.notifyDataSetChanged()
+                    lineChart.invalidate()
+                }
+            }
+        }
+        GlobalScope.launch(Dispatchers.Default) {
+            while(true) {
+                if (!flagECGTransmissionOn)
+                {
+                    timer.cancel()
+                    timer.purge()
+                    this.cancel()
+                }
+                delay(100L)
+            }
+        }
+    }
+
+    private fun clearChart(lineChart: LineChart) {
+        lineChart.data.clearValues()
+        removalCounter = 0
+        queueDrawing.clear()
+        Thread.sleep(50)
+
+        val entriesECGL1 = arrayListOf<Entry>(Entry(0f, 0f))
+
+        val yAxisRight = lineChart.axisRight
+        yAxisRight.isEnabled = false
+        val yAxisLeft = lineChart.axisLeft
+        //yAxisLeft.isEnabled = false
+        yAxisLeft.granularity = 1f
+        yAxisLeft.axisMaximum = 4000f
+        yAxisLeft.axisMinimum = -3500f
+
+        val dataSetECGL1 = LineDataSet(entriesECGL1, "value")
+        dataSetECGL1.setDrawValues(false)
+        dataSetECGL1.color = Color.BLACK
+        dataSetECGL1.setDrawCircles(false)
+        val ptPerRound = 4
+
+        lineChart.data = LineData(dataSetECGL1)
+        removeAnEntry(lineChart, 0, 0f)
+    }
+
+
+    private fun addNewEntry(lineChart: LineChart, setIndex: Int, value: Float) {
+        val data: LineData = lineChart.data
+        val set: LineDataSet = data.getDataSetByIndex(setIndex) as LineDataSet
+
+        data.addEntry(
+            Entry(
+                (set.entryCount + removalCounter).toFloat(),  //+removalCounter
+                value
+            ), setIndex
+        )
+        data.notifyDataChanged()
+        lineChart.setVisibleXRangeMaximum(VISIBLE_COUNT)
+
+        if (set.entryCount > VISIBLE_COUNT) {
+            data.removeEntry(removalCounter.toFloat(), setIndex)
+            removalCounter++
+            /*
+            data.removeEntry(removalCounter, setIndex)
+            if ((count % 3) == 0) {
+                removalCounter++
+            }
+            count++
+             */
+            // move to the latest entry
+            lineChart.moveViewToX((set.entryCount + removalCounter).toFloat() - VISIBLE_COUNT)
+        }
+
+        lineChart.notifyDataSetChanged()
+        lineChart.invalidate()
+    }
+
+    private fun removeAnEntry(lineChart: LineChart, setIndex: Int, pos: Float) {
+        val data: LineData = lineChart.data
+        data.removeEntry(pos, setIndex)
+        data.notifyDataChanged()
+    }
+    /********************@Plot Chart Function***********************/
+
+
+    /********************Write File Function***********************/
+    /*
+    private fun createFile(fileName: String) {
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)  //Intent is used to transfer data between two different Activities
+        intent.addCategory(Intent.CATEGORY_OPENABLE)  //What type of the intent
+        intent.type = "text/z2b"   //MIME type
+        intent.putExtra(Intent.EXTRA_TITLE, "$fileName.z2b")   //put in your data
+        startActivityForResult(intent, WRITE_REQUEST_CODE)   //call another Activity(goto @onActivityResult)
+    }
+
+    private fun updateFile(Data: String) {
+        Thread {
+            if (mFileUri != null) {
+                var outputStream: OutputStream? = null
+                try {
+                    // 获取 OutputStream
+                    outputStream =
+                        context?.contentResolver?.openOutputStream(mFileUri!!)  //try to open the file
+                    outputStream?.write(Data.toByteArray()) //write to the file
+                    runOnUiThread {
+                        Toast.makeText(context, "Write Success!", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: IOException) {
+                    runOnUiThread {
+                        Toast.makeText(context, "Failed to store the file！", Toast.LENGTH_SHORT)
+                            .show()
+                    }
+                } finally {
+                    if (outputStream != null) {
+                        try {
+                            outputStream.close()  //close the file
+                        } catch (e: IOException) {
+                            e.fillInStackTrace()
+                        }
+                    }
+                }
+            } else {
+                runOnUiThread {
+                    Toast.makeText(context, "Please create the file first!", Toast.LENGTH_SHORT)
+                        .show()
+                }
+            }
+            flagCreateFile = false
+        }.start()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (resultCode == Activity.RESULT_OK) {
+            val uri = data?.data   //get URI
+            if (requestCode == WRITE_REQUEST_CODE) {   //create/write file situation
+                mFileUri = uri
+                var matrixECGString = ""
+                for (i in 1 until axisECG.size-1) {
+                    matrixECGString = matrixECGString + axisECG[i].toString() + "\n"
+                }
+                updateFile(matrixECGString)
+                //Toast.makeText(context, "File Created!", Toast.LENGTH_SHORT).show()
+            } else if (requestCode == REQUEST_CODE_FOR_DIR) {   //grant permission to store the file
+                if (uri != null) {
+                    //make the permission alive from the restart of the device
+                    val takeFlags = (data.flags
+                            and (Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            or Intent.FLAG_GRANT_WRITE_URI_PERMISSION))
+                    context?.contentResolver?.takePersistableUriPermission(uri, takeFlags)
+
+                    // store the URI in a specific folder(defined by Android)
+                    val sp: SharedPreferences? = context?.getSharedPreferences(
+                        "DirPermission",
+                        Context.MODE_PRIVATE
+                    )
+                    val editor = sp?.edit()
+                    editor?.putString("uriTree", uri.toString())
+                    editor?.apply()
+                    getDirInfo(uri)
+                }
+            }
+        }
+    }
+
+    @SuppressLint("SetTextI18n")
+    private fun getDirInfo(uri: Uri) {
+        // create a tree rooted at the given URI
+        val root = context?.let { DocumentFile.fromTreeUri(it, uri) }
+        mInfo!!.text = """
+            Uri: ${root!!.uri}
+            Name: ${root.name}
+            """.trimIndent()  //get rid of extra whitespace
+    }
+    */
+    //////////////////////////////////////////////////////////////////////////////
+
+    private fun externalPrivateCreateFolder(fileName: String, data: String) {
+        val dir = getExternalStoragePrivateDir()
+        val f = File(dir, fileName)
+        try {
+            val outputStream = FileOutputStream(f)
+            outputStream.write(data.toByteArray())
+            outputStream.close()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun getExternalStoragePrivateDir(): File {
+        val file = File(context?.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "z2b")
+        if (!file.mkdirs()) {
+            Log.e("", "Directory not created or exist")
+        }
+        return file
+    }
+    /********************@Write File Function***********************/
+
+    /**
+     * 1. Make time-setting function enabled again
+     * 2. Send stop transmission command and stop-notify command
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun stopMeasure(bleDevice: BleDevice) {
+        flagECGTransmissionOn = false
+        runOnUiThread {
+            textSecondInput.isEnabled = true
+        }
+
+        //ECG Write Command
+        val hex = cmdRealTimeClose.toString()
+
+        BleManager.getInstance().write(
+            bleDevice,
+            bleUARTServiceUUID,
+            bleUARTCharacteristicUUID,//characteristic.uuid.toString(),
+            HexUtil.hexStringToBytes(hex),
+            object : BleWriteCallback() {
+                override fun onWriteSuccess(
+                    current: Int,
+                    total: Int,
+                    justWrite: ByteArray
+                ) {}
+
+                override fun onWriteFailure(exception: BleException) {
+                }
+            }
+        )
+
+        Thread.sleep(400)
+
+        //ECG Stop Notify
+        BleManager.getInstance().stopNotify(
+            bleDevice,
+            bleUARTServiceUUID,
+            bleUARTCharacteristicUUID
+        )
+
+    }
+
+    ////////////////////////////////////////////////////////////////////
+
+    private fun runOnUiThread(runnable: Runnable) {
+    if (isAdded && activity != null)
+        activity!!.runOnUiThread(runnable)
+    }
+
+    private fun addText(textView: TextView, content: String) {
+        textView.append(content)
+        textView.append("\n")
+        val offset = textView.lineCount * textView.lineHeight
+        if (offset > textView.height) {
+            textView.scrollTo(0, offset - textView.height)
+        }
+    }
+
+
+    companion object {
+        @JvmStatic
+        fun newInstance(param1: String, param2: String) =
+            ShowChartFragment().apply {
+                arguments = Bundle().apply {
+                    putString(ARG_PARAM1, param1)
+                    putString(ARG_PARAM2, param2)
+                }
+            }
+    }
+}
+
