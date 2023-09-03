@@ -1,13 +1,13 @@
 <component name="libraryTable">
   <library name="Gradle: com.github.ReactiveX:RxKotlin:2.x-SNAPSHOT">
     <CLASSES>
-      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.ReactiveX/RxKotlin/2.x-SNAPSHOT/8c9da04b55a725633d93209f17769ce35d45d5e4/RxKotlin-2.x-SNAPSHOT.jar!/" />
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.ReactiveX/RxKotlin/2.x-SNAPSHOT/9a984811acc1a5aba5f05ad82b7ca7420c109bed/RxKotlin-2.x-SNAPSHOT.jar!/" />
     </CLASSES>
     <JAVADOC>
-      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.ReactiveX/RxKotlin/2.x-SNAPSHOT/5d178fe23b53505c56460bb87928b1c553c186bb/RxKotlin-2.x-SNAPSHOT-javadoc.jar!/" />
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.ReactiveX/RxKotlin/2.x-SNAPSHOT/1877e79e9ddb888388661321a9321fb7aa79219b/RxKotlin-2.x-SNAPSHOT-javadoc.jar!/" />
     </JAVADOC>
     <SOURCES>
-      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.ReactiveX/RxKotlin/2.x-SNAPSHOT/8c440d51028a87e1a91d765bb663e2e8bbbb22be/RxKotlin-2.x-SNAPSHOT-sources.jar!/" />
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/com.github.ReactiveX/RxKotlin/2.x-SNAPSHOT/e8a32574e1681a93cd73e5fd5406be120bb7d78b/RxKotlin-2.x-SNAPSHOT-sources.jar!/" />
     </SOURCES>
   </library>
 </component>

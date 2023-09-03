@@ -189,10 +189,10 @@ class MainFragment : Fragment(), DeviceAdapter.OnDeviceClickListener {
         }
 
         val permissions = arrayOf(
-            Manifest.permission.BLUETOOTH_SCAN,
+            //Manifest.permission.BLUETOOTH_SCAN,
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.WRITE_EXTERNAL_STORAGE,
-            Manifest.permission.BLUETOOTH_CONNECT
+            //Manifest.permission.BLUETOOTH_CONNECT
         )
         val permissionDeniedList = ArrayList<String>()
         for (permission in permissions) {
